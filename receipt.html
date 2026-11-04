@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Receipt</title>
-<style id="page-size">@page { size: 58mm auto; margin: 0; }</style>
+<style id="page-size">@page { size: 58mm 200mm; margin: 0; }</style>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -44,7 +44,8 @@
   #error { color: #b00; text-align: center; margin: 12px; font-family: sans-serif; }
   @media print {
     body { background: #fff; }
-    #receipt { margin: 0; }
+    html, body { margin: 0; padding: 0; }
+    #receipt { margin: 0 auto; }
     #controls, #error { display: none; }
   }
 </style>
@@ -106,9 +107,15 @@ if ("serviceWorker" in navigator) {
   }
 
   // Paper width
-  if (get("w") === "80") {
-    document.body.classList.add("w80");
-    document.getElementById("page-size").textContent = "@page { size: 80mm auto; margin: 0; }";
+  var paperMm = get("w") === "80" ? 80 : 58;
+  if (paperMm === 80) document.body.classList.add("w80");
+
+  // Set the paper to exactly receipt width x receipt length, so the print dialog uses the right format
+  function fitPaper() {
+    var el = document.getElementById("receipt");
+    var hMm = Math.ceil(el.getBoundingClientRect().height * 25.4 / 96) + 6;
+    document.getElementById("page-size").textContent =
+      "@page { size: " + paperMm + "mm " + Math.max(hMm, 50) + "mm; margin: 0; }";
   }
 
   var itemsRaw = get("i");
@@ -161,10 +168,13 @@ if ("serviceWorker" in navigator) {
   if (get("f")) h.push('<div class="center footer">' + esc(get("f")) + "</div>");
 
   document.getElementById("receipt").innerHTML = h.join("");
+  fitPaper();
+  window.addEventListener("load", fitPaper);
+  window.addEventListener("beforeprint", fitPaper);
 
   // Auto-print once the page (and logo, if any) has loaded
   if (get("auto") !== "0") {
-    var go = function () { setTimeout(function () { window.print(); }, 400); };
+    var go = function () { setTimeout(function () { fitPaper(); window.print(); }, 400); };
     if (document.readyState === "complete") go(); else window.addEventListener("load", go);
   }
 })();
