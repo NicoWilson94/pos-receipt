@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Receipt</title>
+<style id="page-size">@page { size: 58mm auto; margin: 0; }</style>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Courier New", Courier, monospace;
+    font-size: 12px;
+    line-height: 1.35;
+    color: #000;
+    background: #eee;
+  }
+  #receipt {
+    width: 48mm;               /* 58mm paper = ~48mm printable */
+    margin: 12px auto;
+    padding: 3mm 0;
+    background: #fff;
+  }
+  body.w80 #receipt { width: 72mm; font-size: 13px; } /* 80mm paper */
+  .center { text-align: center; }
+  .bold { font-weight: bold; }
+  .big { font-size: 1.25em; }
+  .logo { display: block; max-width: 60%; max-height: 22mm; margin: 0 auto 2mm; }
+  hr { border: 0; border-top: 1px dashed #000; margin: 2mm 0; }
+  .row { display: flex; justify-content: space-between; gap: 2mm; }
+  .row span:last-child { text-align: right; white-space: nowrap; }
+  .item-name { word-break: break-word; }
+  .item-detail { padding-left: 2mm; }
+  .footer { margin-top: 3mm; white-space: pre-line; }
+  #controls { text-align: center; margin: 12px; }
+  #controls button {
+    font-size: 16px; padding: 10px 24px; margin: 0 6px;
+    border: 0; border-radius: 6px; background: #1a73e8; color: #fff;
+  }
+  #controls button.secondary { background: #777; }
+  #error { color: #b00; text-align: center; margin: 12px; font-family: sans-serif; }
+  @media print {
+    body { background: #fff; }
+    #receipt { margin: 0; }
+    #controls, #error { display: none; }
+  }
+</style>
+</head>
+<body>
+<div id="controls">
+  <button onclick="window.print()">Print</button>
+  <button class="secondary" onclick="history.back()">Back</button>
+</div>
+<div id="error"></div>
+<div id="receipt"></div>
+
+<script>
+// Save this page on the device so it opens without internet next time
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").catch(function () {});
+}
+</script>
+<script>
+/*
+  Receipt data is read from the part of the URL after "#".
+  Browsers never send that part to the server, so order data stays on the device.
+
+  Parameters (all optional except i):
+    s    store name            a    address           p   phone
+    logo logo image URL        id   order number      d   date/time text
+    c    cashier               t    table / customer  pay payment method
+    i    items: "qty|name|price , qty|name|price , ..."  (AppSheet list output)
+    sub  subtotal   disc discount   svc service charge   tax tax/PB1
+    tot  total      paid amount paid   chg change
+    f    footer text   cur currency prefix (default "Rp")
+    w    paper width: 58 (default) or 80
+    auto 1 = open print dialog automatically (default), 0 = don't
+*/
+(function () {
+  var q = new URLSearchParams(location.hash.slice(1) || location.search.slice(1));
+  var get = function (k) { return (q.get(k) || "").trim(); };
+  var cur = q.has("cur") ? get("cur") : "Rp";
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function toNum(v) {
+    // accepts "25000", "25000.5", "25.000" (id) or "25,000.00" (en)
+    v = String(v).replace(/[^\d.,-]/g, "");
+    if (/^-?\d{1,3}(\.\d{3})+(,\d+)?$/.test(v)) v = v.replace(/\./g, "").replace(",", ".");
+    else v = v.replace(/,/g, "");
+    var n = parseFloat(v);
+    return isNaN(n) ? 0 : n;
+  }
+  function money(v) {
+    var n = toNum(v);
+    return (cur ? cur + " " : "") + n.toLocaleString("id-ID", { maximumFractionDigits: 2 });
+  }
+  function row(label, value, cls) {
+    return '<div class="row ' + (cls || "") + '"><span>' + esc(label) + "</span><span>" + esc(value) + "</span></div>";
+  }
+
+  // Paper width
+  if (get("w") === "80") {
+    document.body.classList.add("w80");
+    document.getElementById("page-size").textContent = "@page { size: 80mm auto; margin: 0; }";
+  }
+
+  var itemsRaw = get("i");
+  if (!itemsRaw) {
+    document.getElementById("error").textContent = "No receipt data in the link.";
+    return;
+  }
+
+  // AppSheet joins list items with " , ". Split only where the next chunk starts with "qty|",
+  // so commas inside item names don't break the line.
+  var lines = itemsRaw.split(/\s*,\s*(?=-?\d+(?:[.,]\d+)?\s*\|)/);
+
+  var h = [];
+  var logo = get("logo");
+  if (logo) h.push('<img class="logo" src="' + esc(logo) + '" alt="">');
+  if (get("s")) h.push('<div class="center bold big">' + esc(get("s")) + "</div>");
+  if (get("a")) h.push('<div class="center">' + esc(get("a")) + "</div>");
+  if (get("p")) h.push('<div class="center">' + esc(get("p")) + "</div>");
+  h.push("<hr>");
+  if (get("id")) h.push(row("No", get("id")));
+  if (get("d")) h.push(row("Tgl", get("d")));
+  if (get("c")) h.push(row("Kasir", get("c")));
+  if (get("t")) h.push(row("Meja", get("t")));
+  h.push("<hr>");
+
+  var computedSub = 0;
+  lines.forEach(function (line) {
+    var parts = line.split("|");
+    if (parts.length < 3) { if (line.trim()) h.push('<div class="item-name">' + esc(line) + "</div>"); return; }
+    var qty = toNum(parts[0]);
+    var name = parts.slice(1, parts.length - 1).join("|").trim();
+    var price = toNum(parts[parts.length - 1]);
+    var lineTotal = qty * price;
+    computedSub += lineTotal;
+    h.push('<div class="item-name">' + esc(name) + "</div>");
+    h.push('<div class="row item-detail"><span>' + esc(qty.toLocaleString("id-ID")) + " x " +
+           esc(price.toLocaleString("id-ID")) + "</span><span>" +
+           esc(lineTotal.toLocaleString("id-ID")) + "</span></div>");
+  });
+
+  h.push("<hr>");
+  h.push(row("Subtotal", money(get("sub") || computedSub)));
+  if (get("disc") && toNum(get("disc")) !== 0) h.push(row("Diskon", "-" + money(get("disc"))));
+  if (get("svc") && toNum(get("svc")) !== 0) h.push(row("Service", money(get("svc"))));
+  if (get("tax") && toNum(get("tax")) !== 0) h.push(row("Pajak", money(get("tax"))));
+  h.push(row("TOTAL", money(get("tot") || computedSub), "bold big"));
+  if (get("pay")) h.push(row("Bayar (" + get("pay") + ")", get("paid") ? money(get("paid")) : ""));
+  else if (get("paid")) h.push(row("Bayar", money(get("paid"))));
+  if (get("chg") && toNum(get("chg")) !== 0) h.push(row("Kembali", money(get("chg"))));
+  h.push("<hr>");
+  h.push('<div class="center footer">' + esc(get("f") || "Terima kasih!") + "</div>");
+
+  document.getElementById("receipt").innerHTML = h.join("");
+
+  // Auto-print once the page (and logo, if any) has loaded
+  if (get("auto") !== "0") {
+    var go = function () { setTimeout(function () { window.print(); }, 400); };
+    if (document.readyState === "complete") go(); else window.addEventListener("load", go);
+  }
+})();
+</script>
+</body>
+</html>
