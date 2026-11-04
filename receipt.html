@@ -8,7 +8,7 @@
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: "Courier New", Courier, monospace;
+    font-family: Arial, Helvetica, sans-serif;
     font-size: 12px;
     line-height: 1.35;
     color: #000;
@@ -24,8 +24,12 @@
   .center { text-align: center; }
   .bold { font-weight: bold; }
   .big { font-size: 1.25em; }
-  .logo { display: block; max-width: 60%; max-height: 22mm; margin: 0 auto 2mm; }
-  hr { border: 0; border-top: 1px dashed #000; margin: 2mm 0; }
+  .logo { display: block; max-width: 55%; max-height: 24mm; margin: 0 auto 4mm; }
+  .store { margin-bottom: 3mm; }
+  .item { margin: 2.5mm 0; }
+  .item-detail { margin-top: 0.5mm; }
+  .date { margin-top: 4mm; }
+  hr { border: 0; border-top: 1px solid #555; margin: 2.5mm 0; }
   .row { display: flex; justify-content: space-between; gap: 2mm; }
   .row span:last-child { text-align: right; white-space: nowrap; }
   .item-name { word-break: break-word; }
@@ -118,44 +122,43 @@ if ("serviceWorker" in navigator) {
   var lines = itemsRaw.split(/\s*,\s*(?=-?\d+(?:[.,]\d+)?\s*\|)/);
 
   var h = [];
+  // ---- Header: logo + store info, centred ----
   var logo = get("logo");
   if (logo) h.push('<img class="logo" src="' + esc(logo) + '" alt="">');
-  if (get("s")) h.push('<div class="center bold big">' + esc(get("s")) + "</div>");
-  if (get("a")) h.push('<div class="center">' + esc(get("a")) + "</div>");
-  if (get("p")) h.push('<div class="center">' + esc(get("p")) + "</div>");
+  var info = [get("s"), get("a"), get("p")].filter(Boolean).map(esc).join("<br>");
+  if (info) h.push('<div class="center store">' + info + "</div>");
+
+  // ---- Order number between two lines ----
   h.push("<hr>");
-  if (get("id")) h.push(row("No", get("id")));
-  if (get("d")) h.push(row("Tgl", get("d")));
-  if (get("c")) h.push(row("Kasir", get("c")));
-  if (get("t")) h.push(row("Meja", get("t")));
+  if (get("id")) h.push('<div class="center">Order No: ' + esc(get("id")) + "</div>");
   h.push("<hr>");
 
+  // ---- Items: name + line total on one row, "qty x price" underneath ----
   var computedSub = 0;
   lines.forEach(function (line) {
     var parts = line.split("|");
-    if (parts.length < 3) { if (line.trim()) h.push('<div class="item-name">' + esc(line) + "</div>"); return; }
+    if (parts.length < 3) { if (line.trim()) h.push('<div class="item">' + esc(line) + "</div>"); return; }
     var qty = toNum(parts[0]);
     var name = parts.slice(1, parts.length - 1).join("|").trim();
     var price = toNum(parts[parts.length - 1]);
     var lineTotal = qty * price;
     computedSub += lineTotal;
-    h.push('<div class="item-name">' + esc(name) + "</div>");
-    h.push('<div class="row item-detail"><span>' + esc(qty.toLocaleString("id-ID")) + " x " +
-           esc(price.toLocaleString("id-ID")) + "</span><span>" +
-           esc(lineTotal.toLocaleString("id-ID")) + "</span></div>");
+    h.push('<div class="item">' +
+             '<div class="row"><span class="item-name">' + esc(name) + "</span><span>" +
+               esc(lineTotal.toLocaleString("id-ID")) + "</span></div>" +
+             '<div class="item-detail">' + esc(qty.toLocaleString("id-ID")) + " x " + esc(money(price)) + "</div>" +
+           "</div>");
   });
 
-  h.push("<hr>");
-  h.push(row("Subtotal", money(get("sub") || computedSub)));
-  if (get("disc") && toNum(get("disc")) !== 0) h.push(row("Diskon", "-" + money(get("disc"))));
-  if (get("svc") && toNum(get("svc")) !== 0) h.push(row("Service", money(get("svc"))));
-  if (get("tax") && toNum(get("tax")) !== 0) h.push(row("Pajak", money(get("tax"))));
-  h.push(row("TOTAL", money(get("tot") || computedSub), "bold big"));
-  if (get("pay")) h.push(row("Bayar (" + get("pay") + ")", get("paid") ? money(get("paid")) : ""));
-  else if (get("paid")) h.push(row("Bayar", money(get("paid"))));
-  if (get("chg") && toNum(get("chg")) !== 0) h.push(row("Kembali", money(get("chg"))));
-  h.push("<hr>");
-  h.push('<div class="center footer">' + esc(get("f") || "Terima kasih!") + "</div>");
+  // ---- Total (only when the link includes tot=) ----
+  if (get("tot")) {
+    h.push("<hr>");
+    h.push(row("TOTAL", money(get("tot")), "bold"));
+  }
+
+  // ---- Date at the bottom, then optional footer ----
+  if (get("d")) h.push('<div class="center date">' + esc(get("d")) + "</div>");
+  if (get("f")) h.push('<div class="center footer">' + esc(get("f")) + "</div>");
 
   document.getElementById("receipt").innerHTML = h.join("");
 
