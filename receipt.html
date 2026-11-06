@@ -35,6 +35,10 @@
   .item-name { word-break: break-word; }
   .item-detail { padding-left: 2mm; }
   .footer { margin-top: 3mm; white-space: pre-line; }
+  .sub { padding-left: 2mm; }
+  .sub .row span:first-child { padding-left: 0; }
+  .meta { margin: 1mm 0; }
+  .note { margin-top: 2.5mm; white-space: pre-line; word-break: break-word; }
   #controls { text-align: center; margin: 12px; }
   #controls button {
     font-size: 16px; padding: 10px 24px; margin: 0 6px;
@@ -74,6 +78,11 @@ if ("serviceWorker" in navigator) {
     logo logo image URL        id   order number      d   date/time text
     c    cashier               t    table / customer  pay payment method
     i    items: "qty|name|price , qty|name|price , ..."  (AppSheet list output)
+         v2: "qty|name~detail~detail|unitPrice|lineTotal"
+             detail lines are separated by "~";
+             a detail "+Topping^18000" prints as an add-on row with its amount on the right;
+             lineTotal (optional 4th field) is used as the item's total (incl. add-ons)
+    plat platform   ot order type   n note / catatan
     sub  subtotal   disc discount   svc service charge   tax tax/PB1
     tot  total      paid amount paid   chg change
     f    footer text   cur currency prefix (default "Rp")
@@ -135,9 +144,12 @@ if ("serviceWorker" in navigator) {
   var info = [get("s"), get("a"), get("p")].filter(Boolean).map(esc).join("<br>");
   if (info) h.push('<div class="center store">' + info + "</div>");
 
-  // ---- Order number between two lines ----
+  // ---- Order number between two lines, then platform / order type / customer ----
   h.push("<hr>");
   if (get("id")) h.push('<div class="center">Order No: ' + esc(get("id")) + "</div>");
+  var metaTop = [get("plat"), get("ot")].filter(Boolean).map(esc).join(" · ");
+  if (metaTop) h.push('<div class="center meta">' + metaTop + "</div>");
+  if (get("t")) h.push('<div class="center meta">' + esc(get("t")) + "</div>");
   h.push("<hr>");
 
   // ---- Items: name + line total on one row, "qty x price" underneath ----
@@ -145,17 +157,35 @@ if ("serviceWorker" in navigator) {
   lines.forEach(function (line) {
     var parts = line.split("|");
     if (parts.length < 3) { if (line.trim()) h.push('<div class="item">' + esc(line) + "</div>"); return; }
+    var isNumeric = function (v) { return /^\s*-?[\d.,]+\s*$/.test(v); };
+    // v2 lines carry a 4th field (line total incl. add-ons); old lines have 3 fields
+    var hasTotal = parts.length >= 4 && isNumeric(parts[parts.length - 1]) && isNumeric(parts[parts.length - 2]);
     var qty = toNum(parts[0]);
-    var name = parts.slice(1, parts.length - 1).join("|").trim();
-    var price = toNum(parts[parts.length - 1]);
-    var lineTotal = qty * price;
+    var nameEnd = hasTotal ? parts.length - 2 : parts.length - 1;
+    var nameField = parts.slice(1, nameEnd).join("|");
+    var price = toNum(parts[nameEnd]);
+    var lineTotal = hasTotal ? toNum(parts[parts.length - 1]) : qty * price;
     computedSub += lineTotal;
+    var bits = nameField.split("~");
+    var name = bits[0].trim();
+    var details = bits.slice(1).map(function (d) { return d.trim(); }).filter(Boolean);
+    var sub = details.map(function (d) {
+      if (d.charAt(0) === "+" && d.indexOf("^") > -1) {
+        var k = d.lastIndexOf("^");
+        return row(d.slice(0, k).trim(), toNum(d.slice(k + 1)).toLocaleString("id-ID"), "sub");
+      }
+      return '<div class="item-detail">' + esc(d) + "</div>";
+    }).join("");
     h.push('<div class="item">' +
              '<div class="row"><span class="item-name">' + esc(name) + "</span><span>" +
                esc(lineTotal.toLocaleString("id-ID")) + "</span></div>" +
              '<div class="item-detail">' + esc(qty.toLocaleString("id-ID")) + " x " + esc(money(price)) + "</div>" +
+             sub +
            "</div>");
   });
+
+  // ---- Note / catatan ----
+  if (get("n")) h.push('<div class="note">Catatan: ' + esc(get("n")) + "</div>");
 
   // ---- Total (only when the link includes tot=) ----
   if (get("tot")) {
