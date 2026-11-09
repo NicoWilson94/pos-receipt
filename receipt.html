@@ -41,8 +41,12 @@
   .order-no { font-size: 1.6em; font-weight: bold; line-height: 1.2; margin: 1mm 0; }
   .note { margin-top: 2.5mm; white-space: pre-line; word-break: break-word; }
   /* highlighted notes: bold text in a solid box (borders print on thermal printers; colours don't) */
-  .hl { font-weight: bold; border: 1.5px solid #000; padding: 0.8mm 1.5mm; margin: 1mm 0 0.5mm 2mm; word-break: break-word; }
-  .note.hl { margin-left: 0; }
+  /* dish note: small, indented, dashed box under the dish */
+  .hl { font-weight: bold; border: 1px dashed #000; padding: 0.5mm 1.5mm; margin: 1mm 0 0.5mm 2mm; word-break: break-word; }
+  /* order note: full width, thick double box, own heading, printed at the top */
+  .order-note { border: 3px double #000; padding: 1mm 2mm; margin: 2mm 0; word-break: break-word; white-space: pre-line; }
+  .order-note .lbl { display: block; text-align: center; font-size: 0.85em; font-weight: bold; letter-spacing: 0.5px; border-bottom: 1px solid #000; margin-bottom: 1mm; padding-bottom: 0.5mm; }
+  .order-note .txt { display: block; font-weight: bold; font-size: 1.15em; text-align: center; }
   #controls { text-align: center; margin: 12px; }
   #controls button {
     font-size: 16px; padding: 10px 24px; margin: 0 6px;
@@ -156,6 +160,9 @@ if ("serviceWorker" in navigator) {
   if (metaTop) h.push('<div class="center meta">' + metaTop + "</div>");
   h.push("<hr>");
 
+  // ---- Order note / catatan: at the top, in its own double box, so it can't be confused with a dish note ----
+  if (get("n")) h.push('<div class="order-note"><span class="lbl">CATATAN ORDER</span><span class="txt">' + esc(get("n")) + "</span></div>");
+
   // ---- Items: name + line total on one row, "qty x price" underneath ----
   var computedSub = 0;
   lines.forEach(function (line) {
@@ -185,9 +192,6 @@ if ("serviceWorker" in navigator) {
              sub +
            "</div>");
   });
-
-  // ---- Note / catatan ----
-  if (get("n")) h.push('<div class="note hl">Catatan: ' + esc(get("n")) + "</div>");
 
   // ---- Total (only when the link includes tot=) ----
   if (get("tot")) {
