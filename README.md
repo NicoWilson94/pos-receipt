@@ -1,77 +1,184 @@
-# Pastabox POS – Receipt Printing (AppSheet) – Project Context
+# Pastabox POS – Receipt Page
 
-Paste this whole file to Claude to continue where we left off.
+A small web page that prints counter receipts for the **Pastabox** AppSheet POS on a thermal printer. It works offline after the first visit.
 
-## About the app
-- Owner: Nico, who runs the **Pastabox** restaurant (Gading Serpong, Karelia Village, Kab. Tangerang 15334, +62-851-7166-2126).
-- POS app built in **AppSheet**. The editor app name is "Pastabox TRX". The internal app folder is `OnlineRestaurantSales-95579623`.
-- Data is in Google Sheets. The default app folder in Drive is `appsheet/data/OnlineRestaurantSales-95579623/`.
-- Cashier/employee shown on receipts: "MM" (currently hard-coded).
+- **Live page:** `https://nicowilson94.github.io/pos-receipt/receipt.html`
+- **Store:** Pastabox – Gading Serpong · Karelia Village, Kab. Tangerang 15334 · +62-851-7166-2126
+- **App:** AppSheet POS (data model v2) on a Google Sheet with `SET_` (settings) and `TRX_` (transaction) tabs
 
-## Tables and columns (known so far)
-**Sales** (parent / order table)
-- `Order Number`, `Order Date`, `Customer Name`, `Total`, `Status`, `Notes`
-- `Print Request` (real column, DateTime, initial value empty): set by the Request Receipt action to start the PDF bot
-- `Related Sale Items`: the related list of item rows
-- There is **no** `Subtotal` column.
+Order data is passed in the link **after `#`**. Browsers never send that part to the server, so order data never reaches GitHub. Only the layout is public.
 
-**Sale Items** (child / item table; exact table name not confirmed)
-- `Item` (a Ref to the menu/item table, so it shows an ID such as ITM-001), `Qty`, `Unit Price`, `Line Total`
-- ⚠️ STILL UNKNOWN: the **name column of the menu/item table**. It's needed to show the item name instead of ITM-001 via `[Item].[<Name Column>]`.
+---
 
-## Two receipt methods
+## Files
 
-### Method A – PDF via an AppSheet bot (WORKING, needs internet)
-- Action **Request Receipt** (Sales): "Data: set the values of some columns in this row" → `[Print Request] = NOW()`, display Prominent.
-- Bot **Print Receipt Bot**:
-  - Event "Click Print Receipt": Data change, table Sales, **Updates only**, condition
-    `[_THISROW_BEFORE].[Print Request] <> [_THISROW_AFTER].[Print Request]`
-  - Step **Create Receipt** (Create a new file): PDF, template = **Receipt_Template.docx** (Word template in Drive), folder `"Receipts"`, Disable Timestamp ON. Attachment page size Custom: **width 80 mm, height 250 mm**, margins: top 7, bottom 7, left 0, right 0 (pt).
-  - File name prefix (unique per request, avoids showing an old saved copy):
-    `[Order Number] & "-" & TEXT([Print Request], "YYYYMMDDHHMMSS")`
-- To open the PDF in the app: a virtual column `Receipt PDF` (type **File**) or an action **Open Receipt** ("External: open a file"):
-  `"Receipts/" & [Order Number] & "-" & TEXT([Print Request], "YYYYMMDDHHMMSS") & ".pdf"`
-- PDFs are saved in `appsheet/data/OnlineRestaurantSales-95579623/Receipts/`.
-- The Word template was fixed: page 80 × 250 mm, margins 0, outer table 80 mm wide, item table 2 columns (~57 mm + ~22 mm), top gap removed.
-  - The template still uses `<<[Item]>>`, which prints ITM-001. Change it to `<<[Item].[<Name Column>]>>`.
-  - Template tags: `<<[Order Number]>>`, `<<Start: [Related Sale Items]>>` … `<<[Item]>>`, `<<[Qty]>> x <<[Unit Price]>>`, `<<[Line Total]>>` … `<<End>>`, `<<TEXT([Order Date], "DD/MM/YYYY HH:MM")>>`
-- Limits: slow (about 5–20 s plus a sync), no offline use, fixed page height. Kept for formal receipts and email.
-- Lessons learned:
-  - AppSheet converts the Doc/Docx to HTML. Page width, margins and fixed table widths carry over, and a wide page shifts and squeezes the content.
-  - HTML templates in AppSheet must encode tags (`&lt;&lt;[Col]&gt;&gt;`), close every tag (`<br />`), and have Start/End inside the same table row. We switched back to the Word template.
+| File | Purpose |
+|---|---|
+| `receipt.html` | Layout and logic. Reads the link, builds the receipt, sets the paper size, opens the print dialog |
+| `sw.js` | Offline cache. Serves the saved copy first, then refreshes it in the background. **Current VERSION: `receipt-v7`** |
+| `logo.png` | Pastabox logo, trimmed with no empty margin (336 × 178 px) |
 
-### Method B – Instant HTML receipt page (IN SETUP, works offline) ← chosen for counter receipts
-- Hosted on GitHub Pages. Account **NicoWilson94**, repository **pos-receipt** (public).
-  URL: `https://nicowilson94.github.io/pos-receipt/receipt.html`
-- Files in the repository: `receipt.html`, `sw.js` (offline cache, **VERSION "receipt-v2"**, saved copy first then refresh in the background; Nico chose NOT to use the later v3), `logo.png` (Pastabox logo taken from the Word template).
-- Receipt layout (matches the Word format): logo → store name/address/phone centred → line → "Order No: …" centred → line → each item (name left, line total right, "qty x Rp price" underneath) → TOTAL (only if `tot=` is sent) → date centred at the bottom → optional footer.
-- Data is passed after `#` in the URL (never sent to GitHub). Parameters: `s` store, `a` address, `p` phone, `logo`, `id` order no, `d` date text, `i` items, `tot` total, `f` footer, `w` 58|80, `auto` (1 = auto print).
-  Item format: `qty|name|price , qty|name|price` (AppSheet list output).
-- AppSheet setup (status: GitHub upload in progress; the steps below haven't been confirmed as done):
-  1. Virtual column `Line` in Sale Items (Text):
-     `ROUND([Qty]) & "|" & [Item].[<Name Column>] & "|" & ROUND([Unit Price])`
-  2. Virtual column `Items Text` in Sales (Text): `CONCATENATE([Related Sale Items][Line])`
-  3. Action **Print** (Sales, "External: go to a website", Prominent), target:
-     ```
-     "https://nicowilson94.github.io/pos-receipt/receipt.html#"
-     & "logo=logo.png"
-     & "&s=" & ENCODEURL("Pastabox - Gading Serpong")
-     & "&a=" & ENCODEURL("Karelia Village, Kab. Tangerang 15334")
-     & "&p=" & ENCODEURL("+62-851-7166-2126")
-     & "&id=" & ENCODEURL([Order Number])
-     & "&d=" & ENCODEURL(TEXT([Order Date], "DD/MM/YYYY HH:MM"))
-     & "&i=" & ENCODEURL([Items Text])
-     & "&tot=" & ROUND([Total])
-     & "&w=80"
-     ```
-     Optional: run it from the Sales form under Behavior → Event actions → Form Saved.
-  4. Tablet: Android + Bluetooth 80 mm thermal printer + the **RawBT** app (turn on its Android print service). Open the receipt once online so it's saved for offline use.
-  5. AppSheet Settings → Offline mode: "The app can start when offline" + "Delayed sync".
-- Updating: upload a file with the same name in GitHub (Add file → Upload files → Commit). Bump the VERSION in `sw.js` after changing receipt.html. Pages can take 1–3 min to publish, GitHub tells browsers to reuse old copies for about 10 min, and with v2 the first open after an update may still show the old layout (reopen it, or clear the site data in Chrome).
+## Receipt layout
 
-## Open items / next steps
-1. Finish the GitHub upload and turn on Pages (Settings → Pages → Deploy from a branch → main / root). Test:
-   `https://nicowilson94.github.io/pos-receipt/receipt.html#i=1|Carbonara|37000&tot=37000&logo=logo.png`
-2. Tell Claude the item/menu table's **name column**, so ITM-001 can be replaced with the item name (in both the Word template and the `Line` formula).
-3. Add the `Line` and `Items Text` virtual columns and the **Print** action, then test printing with RawBT, including offline (airplane mode with Bluetooth on).
-4. Optional: dynamic PDF height (try an expression in Attachment Page Height: `120 + COUNT([Related Sale Items]) * 12`), QRIS code, kitchen ticket.
+```
+            [ PASTABOX logo ]
+        Pastabox - Gading Serpong
+  Karelia Village, Kab. Tangerang 15334
+           +62-851-7166-2126
+----------------------------------------
+                GF-512                    <- big, bold order number
+            GrabFood · Nico               <- platform · customer (· Group)
+----------------------------------------
+2x Butter Lemon Reguler          110.000  <- qty + dish, dish total incl. add-ons
+  Pasta: Spaghetti
+  + 2x Fried Mushroom                     <- add-ons, no price
+  Cutlery: Yes
+  ┌───────────────────┐
+  │ Note: less spicy  │                   <- dish note, bold in a box
+  └───────────────────┘
+1x Es Teh Manis                    8.000
+┌────────────────────────┐
+│ Catatan: Antar ke lobby │               <- order note, bold in a box
+└────────────────────────┘
+----------------------------------------
+TOTAL                         Rp 118.000
+            9 Nov 2026 13:30
+```
+
+Notes are highlighted with a **box and bold text**, not colour, because thermal printers only print black.
+
+## Link parameters
+
+| Param | Meaning | Example |
+|---|---|---|
+| `logo` | Logo file | `logo.png` |
+| `s` / `a` / `p` | Store name / address / phone | |
+| `id` | Order number (printed big) | `GF-512` |
+| `plat` | Platform | `GrabFood` |
+| `t` | Customer name | `Nico` |
+| `ot` | Order type, sent only for group orders | `Group` |
+| `d` | Date text | `9 Nov 2026 13:30` |
+| `i` | Items (see format below) **required** | |
+| `n` | Order note / catatan | `Antar ke lobby` |
+| `tot` | Total | `118000` |
+| `f` | Footer text (optional) | `Terima kasih!` |
+| `w` | Paper width `58` (default) or `80` | `80` |
+| `auto` | `1` = open the print dialog automatically (default), `0` = don't | |
+| `cur` | Currency prefix (default `Rp`) | |
+
+### Item format (`i`)
+
+Items are joined with ` , ` (AppSheet list output). Each item:
+
+```
+qty|Dish name~detail~detail|unitPrice|itemTotal
+```
+
+- `~` separates detail lines printed under the dish (Pasta, add-ons, Cutlery, For, Note).
+- A detail starting with `Note:` is printed in the highlight box.
+- An add-on detail may end with `^amount` (e.g. `+ 2x Fried Mushroom^46000`). The amount is **not printed**, because the dish total already includes it.
+- `itemTotal` (4th field) is the dish total including add-ons. Old 3-field lines (`qty|name|price`) still work; their total is qty × price.
+
+Example:
+```
+2|Butter Lemon Reguler~Pasta: Spaghetti~+ 2x Fried Mushroom^46000~Cutlery: Yes~Note: less spicy|32000|110000 , 1|Es Teh Manis|8000|8000
+```
+
+---
+
+## AppSheet setup
+
+Table names are the app's table names (`TRX_Sales`, `TRX_Sale Items`, `TRX_Sale Item Addons`). Use the exact `Related …` column names from your app.
+
+**1. `TRX_Sale Item Addons` → virtual column `Receipt Text`** (Text)
+```
+"~+ " & IF([Qty] * [LineID].[Qty] > 1, ROUND([Qty] * [LineID].[Qty]) & "x ", "") & [Item].[Item Name] & "^" & ROUND([Line Total] * [LineID].[Qty])
+```
+Add-ons are **per dish** (Qty usually 1) and are multiplied by the dish quantity.
+
+**2. `TRX_Sale Items` → virtual column `Item Total`** (Price). This is the live dish total and is always correct, even before a sync:
+```
+[Qty] * ([Unit Price] + [Addons Total])
+```
+where `Addons Total = SUM([Related TRX_Sale Item Addons][Line Total])`.
+
+**3. `TRX_Sale Items` → virtual column `Line`** (Text)
+```
+ROUND([Qty]) & "|" & [Item].[Item Name]
+& IF(ISNOTBLANK([Pasta Type]), "~Pasta: " & [Pasta Type].[Pasta Name], "")
+& SUBSTITUTE(CONCATENATE([Related TRX_Sale Item Addons][Receipt Text]), " , ", "")
+& IF([Item].[Category].[Ask Cutlery], "~Cutlery: " & [Cutlery], "")
+& IF(ISNOTBLANK([For]), "~For: " & [For], "")
+& IF(ISNOTBLANK([Note]), "~Note: " & [Note], "")
+& "|" & ROUND([Unit Price]) & "|" & ROUND([Item Total])
+```
+
+**4. `TRX_Sales` → virtual column `Print Text`** (LongText)
+```
+CONCATENATE([Related TRX_Sale Items][Line])
+```
+
+**5. Action `Print`** (For: TRX_Sales · External: go to a website · Prominent · Launch External OFF)
+```
+"https://nicowilson94.github.io/pos-receipt/receipt.html#"
+& "logo=logo.png"
+& "&s=" & ENCODEURL("Pastabox - Gading Serpong")
+& "&a=" & ENCODEURL("Karelia Village, Kab. Tangerang 15334")
+& "&p=" & ENCODEURL("+62-851-7166-2126")
+& "&id=" & ENCODEURL([Order Number])
+& "&plat=" & ENCODEURL([Platform].[Platform Name])
+& IF([Order Type] = "Group", "&ot=Group", "")
+& IF(ISNOTBLANK([Customer Name]), "&t=" & ENCODEURL([Customer Name]), "")
+& "&d=" & ENCODEURL(TEXT([Order Date], "D MMM YYYY HH:MM"))
+& "&i=" & ENCODEURL([Print Text])
+& IF(ISNOTBLANK([Notes]), "&n=" & ENCODEURL([Notes]), "")
+& "&tot=" & ROUND([Net Total])
+& "&w=80"
+```
+- **Only if:** `AND(NOT([Refund Status]), ISNOTBLANK([Print Text]))`
+- **Optional auto-print:** View `New Sale` → Event actions → Form Saved → Print
+- Use `&w=58` for 58 mm paper.
+
+---
+
+## Printing and offline use
+
+- **Tablet:** Android + Bluetooth thermal printer + the **RawBT** app (turn on its Android print service). In the print dialog choose RawBT, set the paper to 80 mm (or smallest) and margins to None.
+- **AppSheet:** Settings → Offline mode → "The app can start when offline" + "Delayed sync". Open the app from the AppSheet app (Play Store), not a Chrome link.
+- **First use:** open one receipt **while online** so the page is saved for offline use.
+- **Offline test:** airplane mode with Bluetooth on → new order → Print.
+- **Windows laptop:** a Chrome shortcut with `--kiosk-printing` and the thermal printer as the default printer skips the dialog.
+
+## Updating the page
+
+1. Repo → **Add file → Upload files** → upload the changed file(s) with the same name → **Commit changes**.
+2. After changing `receipt.html` or `logo.png`, **bump `VERSION` in `sw.js`** (e.g. `receipt-v7` → `receipt-v8`) and upload `sw.js` too.
+3. Wait 1–3 minutes for GitHub Pages to publish.
+4. On each device, open a receipt online, close it, and open it again. The first open still shows the saved copy.
+   If it's still old: Chrome → Site settings → `nicowilson94.github.io` → Clear & reset (laptop: Ctrl + Shift + R).
+
+**Quick test link:**
+`https://nicowilson94.github.io/pos-receipt/receipt.html#i=2|Carbonara~Pasta: Spaghetti~Note: less spicy|34000|68000&tot=68000&id=TEST-1&plat=GrabFood&t=Nico&logo=logo.png&w=80&auto=0`
+
+## Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| "No receipt data in the link" | `Print Text` is empty. Check the `Line` formula |
+| Raw `~` / `^` / `\|` shown on the receipt | The device still has the old page. Reopen it or clear the site data (see Updating) |
+| Dish total misses add-ons | `Line` must end with `ROUND([Item Total])`, not `[Line Total]` |
+| Add-on counted only once for 2 dishes | Add-on Qty must be per dish (1). `Receipt Text` multiplies it by `[LineID].[Qty]` |
+| Prints on A4 / tiny receipt in a corner | Print dialog: printer RawBT or thermal, paper 80 mm, margins None |
+| Logo missing | File must be exactly `logo.png` (lowercase) |
+| Marks on the paper | The RawBT free version adds them. Buy the licence |
+
+## Change log
+
+| Version | Change |
+|---|---|
+| v7 | Logo trimmed (no empty margin) |
+| v6 | Big bold order number; platform · customer on one line; smaller gap under the logo |
+| v5 | Dish notes and catatan highlighted (bold, boxed) |
+| v4 | `2x Dish` format, removed the "qty x Rp price" line, add-ons without price |
+| v3 | Data model v2: pasta, add-ons, cutlery, For, catatan, platform, customer |
+| v2 | Offline cache, exact paper size |
