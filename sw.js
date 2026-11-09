@@ -1,6 +1,6 @@
 // Offline cache for the receipt page.
 // Bump VERSION whenever you change receipt.html or logo.png, so tablets pick up the new copy.
-const VERSION = "receipt-v7";
+const VERSION = "receipt-v8";
 const FILES = ["./receipt.html", "./logo.png"];
 
 self.addEventListener("install", (event) => {
