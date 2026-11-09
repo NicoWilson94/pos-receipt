@@ -24,7 +24,7 @@
   .center { text-align: center; }
   .bold { font-weight: bold; }
   .big { font-size: 1.25em; }
-  .logo { display: block; max-width: 55%; max-height: 24mm; margin: 0 auto 4mm; }
+  .logo { display: block; max-width: 55%; max-height: 24mm; margin: 0 auto 1.5mm; }
   .store { margin-bottom: 3mm; }
   .item { margin: 2.5mm 0; }
   .item-detail { margin-top: 0.5mm; }
@@ -38,7 +38,11 @@
   .sub { padding-left: 2mm; }
   .sub .row span:first-child { padding-left: 0; }
   .meta { margin: 1mm 0; }
+  .order-no { font-size: 1.6em; font-weight: bold; line-height: 1.2; margin: 1mm 0; }
   .note { margin-top: 2.5mm; white-space: pre-line; word-break: break-word; }
+  /* highlighted notes: bold text in a solid box (borders print on thermal printers; colours don't) */
+  .hl { font-weight: bold; border: 1.5px solid #000; padding: 0.8mm 1.5mm; margin: 1mm 0 0.5mm 2mm; word-break: break-word; }
+  .note.hl { margin-left: 0; }
   #controls { text-align: center; margin: 12px; }
   #controls button {
     font-size: 16px; padding: 10px 24px; margin: 0 6px;
@@ -146,10 +150,10 @@ if ("serviceWorker" in navigator) {
 
   // ---- Order number between two lines, then platform / order type / customer ----
   h.push("<hr>");
-  if (get("id")) h.push('<div class="center">Order No: ' + esc(get("id")) + "</div>");
-  var metaTop = [get("plat"), get("ot")].filter(Boolean).map(esc).join(" · ");
+  if (get("id")) h.push('<div class="center order-no">' + esc(get("id")) + "</div>");
+  // platform · customer (· order type, only when sent, e.g. Group)
+  var metaTop = [get("plat"), get("t"), get("ot")].filter(Boolean).map(esc).join(" · ");
   if (metaTop) h.push('<div class="center meta">' + metaTop + "</div>");
-  if (get("t")) h.push('<div class="center meta">' + esc(get("t")) + "</div>");
   h.push("<hr>");
 
   // ---- Items: name + line total on one row, "qty x price" underneath ----
@@ -170,22 +174,20 @@ if ("serviceWorker" in navigator) {
     var name = bits[0].trim();
     var details = bits.slice(1).map(function (d) { return d.trim(); }).filter(Boolean);
     var sub = details.map(function (d) {
-      if (d.charAt(0) === "+" && d.indexOf("^") > -1) {
-        var k = d.lastIndexOf("^");
-        return row(d.slice(0, k).trim(), toNum(d.slice(k + 1)).toLocaleString("id-ID"), "sub");
-      }
+      // add-on amounts ("^18000") are not printed; the dish total already includes them
+      if (d.indexOf("^") > -1) d = d.slice(0, d.lastIndexOf("^")).trim();
+      if (/^note\s*:/i.test(d)) return '<div class="hl">' + esc(d) + "</div>";
       return '<div class="item-detail">' + esc(d) + "</div>";
     }).join("");
     h.push('<div class="item">' +
-             '<div class="row"><span class="item-name">' + esc(name) + "</span><span>" +
+             '<div class="row"><span class="item-name">' + esc(qty.toLocaleString("id-ID")) + "x " + esc(name) + "</span><span>" +
                esc(lineTotal.toLocaleString("id-ID")) + "</span></div>" +
-             '<div class="item-detail">' + esc(qty.toLocaleString("id-ID")) + " x " + esc(money(price)) + "</div>" +
              sub +
            "</div>");
   });
 
   // ---- Note / catatan ----
-  if (get("n")) h.push('<div class="note">Catatan: ' + esc(get("n")) + "</div>");
+  if (get("n")) h.push('<div class="note hl">Catatan: ' + esc(get("n")) + "</div>");
 
   // ---- Total (only when the link includes tot=) ----
   if (get("tot")) {
