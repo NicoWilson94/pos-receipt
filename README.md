@@ -15,7 +15,7 @@ Order data is passed in the link **after `#`**. Browsers never send that part to
 | File | Purpose |
 |---|---|
 | `receipt.html` | Layout and logic. Reads the link, builds the receipt, sets the paper size, opens the print dialog |
-| `sw.js` | Offline cache. Serves the saved copy first, then refreshes it in the background. **Current VERSION: `receipt-v7`** |
+| `sw.js` | Offline cache. Serves the saved copy first, then refreshes it in the background. **Current VERSION: `receipt-v8`** |
 | `logo.png` | Pastabox logo, trimmed with no empty margin (336 × 178 px) |
 
 ## Receipt layout
@@ -29,23 +29,24 @@ Order data is passed in the link **after `#`**. Browsers never send that part to
                 GF-512                    <- big, bold order number
             GrabFood · Nico               <- platform · customer (· Group)
 ----------------------------------------
+╔══════════════════════════════════════╗
+║            CATATAN ORDER             ║  <- order note: top, double box
+║            Antar ke lobby            ║
+╚══════════════════════════════════════╝
 2x Butter Lemon Reguler          110.000  <- qty + dish, dish total incl. add-ons
   Pasta: Spaghetti
   + 2x Fried Mushroom                     <- add-ons, no price
   Cutlery: Yes
-  ┌───────────────────┐
-  │ Note: less spicy  │                   <- dish note, bold in a box
-  └───────────────────┘
+  ┌ ─ ─ ─ ─ ─ ─ ─ ─ ┐
+    Note: less spicy                      <- dish note: under the dish, dashed box
+  └ ─ ─ ─ ─ ─ ─ ─ ─ ┘
 1x Es Teh Manis                    8.000
-┌────────────────────────┐
-│ Catatan: Antar ke lobby │               <- order note, bold in a box
-└────────────────────────┘
 ----------------------------------------
 TOTAL                         Rp 118.000
             9 Nov 2026 13:30
 ```
 
-Notes are highlighted with a **box and bold text**, not colour, because thermal printers only print black.
+Notes use **boxes and bold text**, not colour, because thermal printers only print black. The **order note** (catatan) sits at the top in a thick double box with a "CATATAN ORDER" heading. A **dish note** sits under its dish in a thin dashed box.
 
 ## Link parameters
 
@@ -176,6 +177,7 @@ CONCATENATE([Related TRX_Sale Items][Line])
 
 | Version | Change |
 |---|---|
+| v8 | Order note moved to the top in a double box with a heading; dish note in a dashed box |
 | v7 | Logo trimmed (no empty margin) |
 | v6 | Big bold order number; platform · customer on one line; smaller gap under the logo |
 | v5 | Dish notes and catatan highlighted (bold, boxed) |
